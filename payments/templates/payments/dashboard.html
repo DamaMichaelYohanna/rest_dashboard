@@ -1,0 +1,311 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block page_title %}Real-Time Money Monitoring Dashboard{% endblock %}
+
+{% block content %}
+<!-- Metric Cards Grid -->
+<div class="metrics-grid">
+  <!-- Today's Revenue -->
+  <div class="glass-card metric-card">
+    <div class="metric-header">
+      <span class="metric-title">Today's Revenue</span>
+      <div class="metric-icon-box" style="color: var(--primary-green);">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14h-2v-1c-1.66 0-3-1.34-3-3h2c0 .55.45 1 1 1h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-1.66 0-3-1.34-3-3s1.34-3 3-3v-1h2v1c1.66 0 3 1.34 3 3h-2c0-.55-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1h2c1.66 0 3 1.34 3 3s-1.34 3-3 3v1z"/></svg>
+      </div>
+    </div>
+    <div id="metric-revenue" class="metric-value">₦{{ today_revenue|floatformat:2 }}</div>
+    <div class="metric-change {% if revenue_growth >= 0 %}up{% else %}down{% endif %}">
+      <span>{% if revenue_growth >= 0 %}▲{% else %}▼{% endif %} {{ revenue_growth }}%</span>
+      <span style="color: var(--text-muted); font-weight: 400;">vs yesterday</span>
+    </div>
+  </div>
+
+  <!-- Total Transactions Today -->
+  <div class="glass-card metric-card">
+    <div class="metric-header">
+      <span class="metric-title">Transactions Count</span>
+      <div class="metric-icon-box" style="color: var(--cyan-accent);">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>
+      </div>
+    </div>
+    <div id="metric-count" class="metric-value">{{ today_count }}</div>
+    <div class="metric-change up">
+      <span>{{ today_success_count }} Successful</span>
+      <span style="color: var(--text-muted); font-weight: 400;">({{ success_rate }}% success)</span>
+    </div>
+  </div>
+
+  <!-- Average Ticket Size -->
+  <div class="glass-card metric-card">
+    <div class="metric-header">
+      <span class="metric-title">Average Ticket</span>
+      <div class="metric-icon-box" style="color: var(--purple-accent);">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm5 12H7v-1c0-1.67 3.33-2.5 5-2.5s5 .83 5 2.5v1z"/></svg>
+      </div>
+    </div>
+    <div class="metric-value">₦{{ avg_ticket|floatformat:2 }}</div>
+    <div class="metric-change" style="color: var(--text-muted);">
+      <span>Per successful order</span>
+    </div>
+  </div>
+
+  <!-- Active POS Terminals -->
+  <div class="glass-card metric-card">
+    <div class="metric-header">
+      <span class="metric-title">Active POS Fleet</span>
+      <div class="metric-icon-box" style="color: var(--warning-amber);">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6h16v12H4zm2 2v8h12V8H6zm2 2h4v2H8zm6 0h2v2h-2zm-6 4h8v2H8z"/></svg>
+      </div>
+    </div>
+    <div class="metric-value">{{ active_terminals }} / {{ total_terminals }}</div>
+    <div class="metric-change up">
+      <span class="pulse-dot" style="display: inline-block;"></span>
+      <span>All Terminals Operational</span>
+    </div>
+  </div>
+</div>
+
+<!-- Charts Grid -->
+<div class="charts-grid">
+  <!-- Hourly Sales Trend -->
+  <div class="glass-card">
+    <div class="chart-header">
+      <h3 class="chart-title">Today's Hourly Revenue Trend (NGN ₦)</h3>
+      <span style="font-size: 12px; color: var(--text-muted);">Real-time Moniepoint Sync</span>
+    </div>
+    <div style="height: 280px; position: relative;">
+      <canvas id="hourlySalesChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Payment Method Doughnut -->
+  <div class="glass-card">
+    <div class="chart-header">
+      <h3 class="chart-title">Payment Method Split</h3>
+    </div>
+    <div style="height: 280px; position: relative; display: flex; align-items: center; justify-content: center;">
+      <canvas id="paymentMethodChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Terminal Sales & Real-Time Live Feed Grid -->
+<div class="charts-grid" style="grid-template-columns: 1fr 2fr;">
+  <!-- Sales by POS Terminal -->
+  <div class="glass-card">
+    <div class="chart-header">
+      <h3 class="chart-title">Revenue by POS Terminal</h3>
+    </div>
+    <div style="height: 320px; position: relative;">
+      <canvas id="terminalSalesChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Real-Time Transaction Feed Table -->
+  <div class="glass-card">
+    <div class="chart-header">
+      <h3 class="chart-title">Live Transaction Ticker</h3>
+      <div class="live-badge">
+        <span class="pulse-dot"></span>
+        Auto-Updating
+      </div>
+    </div>
+    <div class="table-responsive" style="max-height: 320px;">
+      <table class="custom-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Terminal</th>
+            <th>Amount</th>
+            <th>Method</th>
+            <th>Status</th>
+            <th>Customer / Note</th>
+          </tr>
+        </thead>
+        <tbody id="live-table-body">
+          {% for txn in recent_transactions %}
+            <tr>
+              <td style="font-weight: 600;">{{ txn.created_at|date:"H:i:s" }}</td>
+              <td>{{ txn.terminal.name|default:txn.terminal_serial }}</td>
+              <td style="font-weight: 700; color: #fff;">₦{{ txn.amount|floatformat:2 }}</td>
+              <td><span class="badge badge-method">{{ txn.get_payment_method_display }}</span></td>
+              <td>
+                {% if txn.status == 'SUCCESS' %}
+                  <span class="badge badge-success">Success</span>
+                {% elif txn.status == 'FAILED' %}
+                  <span class="badge badge-failed">Failed</span>
+                {% else %}
+                  <span class="badge badge-pending">Pending</span>
+                {% endif %}
+              </td>
+              <td style="color: var(--text-muted); font-size: 12px;">{{ txn.customer_name|default:"Restaurant Payment" }}</td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">No transactions recorded today yet.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Parse Django context JSON
+  const hourlyLabels = {{ hourly_labels_json|safe }};
+  const hourlyData = {{ hourly_data_json|safe }};
+  const methodData = {{ method_data_json|safe }};
+  const terminalLabels = {{ terminal_labels_json|safe }};
+  const terminalData = {{ terminal_data_json|safe }};
+
+  // 1. Hourly Sales Line Chart
+  const ctxHourly = document.getElementById('hourlySalesChart').getContext('2d');
+  const gradientHourly = ctxHourly.createLinearGradient(0, 0, 0, 280);
+  gradientHourly.addColorStop(0, 'rgba(16, 185, 129, 0.4)');
+  gradientHourly.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+
+  const hourlyChart = new Chart(ctxHourly, {
+    type: 'line',
+    data: {
+      labels: hourlyLabels,
+      datasets: [{
+        label: 'Revenue (₦)',
+        data: hourlyData,
+        borderColor: '#10B981',
+        borderWidth: 3,
+        backgroundColor: gradientHourly,
+        fill: true,
+        tension: 0.35,
+        pointBackgroundColor: '#10B981',
+        pointBorderColor: '#fff',
+        pointRadius: 4,
+        pointHoverRadius: 7
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => ` ₦${ctx.raw.toLocaleString()}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          ticks: { color: '#9CA3AF', font: { size: 11 } }
+        },
+        y: {
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          ticks: {
+            color: '#9CA3AF',
+            font: { size: 11 },
+            callback: (val) => '₦' + val.toLocaleString()
+          }
+        }
+      }
+    }
+  });
+
+  // 2. Payment Method Doughnut Chart
+  const ctxMethod = document.getElementById('paymentMethodChart').getContext('2d');
+  new Chart(ctxMethod, {
+    type: 'doughnut',
+    data: {
+      labels: ['Card Payment', 'Bank Transfer', 'Other/USSD'],
+      datasets: [{
+        data: methodData,
+        backgroundColor: ['#10B981', '#06B6D4', '#8B5CF6'],
+        borderWidth: 0,
+        hoverOffset: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { color: '#9CA3AF', font: { size: 12 }, padding: 16 }
+        }
+      },
+      cutout: '70%'
+    }
+  });
+
+  // 3. Terminal Sales Bar Chart
+  const ctxTerminal = document.getElementById('terminalSalesChart').getContext('2d');
+  new Chart(ctxTerminal, {
+    type: 'bar',
+    data: {
+      labels: terminalLabels,
+      datasets: [{
+        label: 'Sales (₦)',
+        data: terminalData,
+        backgroundColor: ['rgba(16, 185, 129, 0.7)', 'rgba(6, 182, 212, 0.7)', 'rgba(139, 92, 246, 0.7)', 'rgba(245, 158, 11, 0.7)'],
+        borderRadius: 8,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#9CA3AF', font: { size: 11 } } },
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9CA3AF', callback: (v) => '₦' + v.toLocaleString() } }
+      }
+    }
+  });
+
+  // Live Auto-Polling JS Function
+  let lastTxnId = null;
+
+  async function fetchLiveUpdates() {
+    try {
+      const res = await fetch('/api/live-feed/');
+      const data = await res.json();
+
+      // Update KPI Revenue and Count
+      document.getElementById('metric-revenue').innerText = data.today_revenue;
+      document.getElementById('metric-count').innerText = data.today_count;
+
+      if (data.recent_transactions && data.recent_transactions.length > 0) {
+        const newest = data.recent_transactions[0];
+        
+        // If a new transaction arrived
+        if (lastTxnId && newest.id !== lastTxnId && newest.status === 'SUCCESS') {
+          showToast('Payment Completed!', `${newest.terminal}: Received ${newest.amount} via ${newest.method}`);
+        }
+        lastTxnId = newest.id;
+
+        // Render table
+        const tbody = document.getElementById('live-table-body');
+        tbody.innerHTML = data.recent_transactions.map(t => `
+          <tr>
+            <td style="font-weight: 600;">${t.time}</td>
+            <td>${t.terminal}</td>
+            <td style="font-weight: 700; color: #fff;">${t.amount}</td>
+            <td><span class="badge badge-method">${t.method}</span></td>
+            <td>
+              ${t.status === 'SUCCESS' ? '<span class="badge badge-success">Success</span>' : 
+                t.status === 'FAILED' ? '<span class="badge badge-failed">Failed</span>' : '<span class="badge badge-pending">Pending</span>'}
+            </td>
+            <td style="color: var(--text-muted); font-size: 12px;">${t.note}</td>
+          </tr>
+        `).join('');
+      }
+    } catch (e) {
+      console.warn("Live feed poll error:", e);
+    }
+  }
+
+  window.fetchLiveUpdates = fetchLiveUpdates;
+  // Poll every 5 seconds for live Moniepoint payment events
+  setInterval(fetchLiveUpdates, 5000);
+</script>
+{% endblock %}

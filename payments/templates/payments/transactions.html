@@ -1,0 +1,204 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block page_title %}Transaction History & Reports{% endblock %}
+
+{% block content %}
+<div class="glass-card" style="margin-bottom: 24px;">
+  <!-- Filter & Search Controls -->
+  <form method="GET" action="{% url 'transactions' %}" style="display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end;">
+    <div style="flex: 2; min-width: 220px;">
+      <label class="form-label">Search Reference / RRN / Note</label>
+      <input type="text" name="search" class="form-input" placeholder="Search merchant ref, RRN, or customer..." value="{{ search }}">
+    </div>
+
+    <div style="flex: 1; min-width: 140px;">
+      <label class="form-label">Status</label>
+      <select name="status" class="form-select">
+        <option value="">All Statuses</option>
+        <option value="SUCCESS" {% if status == 'SUCCESS' %}selected{% endif %}>Success</option>
+        <option value="FAILED" {% if status == 'FAILED' %}selected{% endif %}>Failed</option>
+        <option value="PENDING" {% if status == 'PENDING' %}selected{% endif %}>Pending</option>
+      </select>
+    </div>
+
+    <div style="flex: 1; min-width: 150px;">
+      <label class="form-label">Payment Method</label>
+      <select name="payment_method" class="form-select">
+        <option value="">All Methods</option>
+        <option value="CARD_PURCHASE" {% if payment_method == 'CARD_PURCHASE' %}selected{% endif %}>Card Payment</option>
+        <option value="POS_TRANSFER" {% if payment_method == 'POS_TRANSFER' %}selected{% endif %}>Bank Transfer</option>
+      </select>
+    </div>
+
+    <div style="flex: 1; min-width: 150px;">
+      <label class="form-label">Terminal</label>
+      <select name="terminal" class="form-select">
+        <option value="">All POS Terminals</option>
+        {% for term in terminals %}
+          <option value="{{ term.id }}" {% if terminal_id == term.id|stringformat:"s" %}selected{% endif %}>{{ term.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div style="display: flex; gap: 10px;">
+      <button type="submit" class="btn btn-secondary">Filter</button>
+      <a href="{% url 'transactions' %}" class="btn btn-secondary" style="color: var(--text-muted);">Reset</a>
+      <a href="{% url 'export_transactions' %}" class="btn btn-primary" style="background: linear-gradient(135deg, var(--cyan-accent), #0284C7);">
+        <span>📥</span> Export CSV
+      </a>
+    </div>
+  </form>
+</div>
+
+<!-- Transactions List Table -->
+<div class="glass-card">
+  <div class="chart-header">
+    <h3 class="chart-title">Matching Payments ({{ total_count }})</h3>
+    <div style="font-weight: 700; color: var(--primary-green); font-size: 16px;">
+      Total Value: ₦{{ total_sum|floatformat:2 }}
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="custom-table">
+      <thead>
+        <tr>
+          <th>Date & Time</th>
+          <th>Merchant Reference</th>
+          <th>Terminal</th>
+          <th>Amount</th>
+          <th>Method</th>
+          <th>Status</th>
+          <th>RRN</th>
+          <th>Customer / Note</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for txn in page_obj %}
+          <tr>
+            <td style="font-size: 12px; color: var(--text-muted);">{{ txn.created_at|date:"Y-m-d H:i:s" }}</td>
+            <td style="font-weight: 600; font-family: monospace;">{{ txn.merchant_reference }}</td>
+            <td>{{ txn.terminal.name|default:txn.terminal_serial }}</td>
+            <td style="font-weight: 700; color: #fff;">₦{{ txn.amount|floatformat:2 }}</td>
+            <td><span class="badge badge-method">{{ txn.get_payment_method_display }}</span></td>
+            <td>
+              {% if txn.status == 'SUCCESS' %}
+                <span class="badge badge-success">Success</span>
+              {% elif txn.status == 'FAILED' %}
+                <span class="badge badge-failed">Failed</span>
+              {% else %}
+                <span class="badge badge-pending">Pending</span>
+              {% endif %}
+            </td>
+            <td style="font-family: monospace; font-size: 12px;">{{ txn.rrn|default:"-" }}</td>
+            <td style="color: var(--text-muted); font-size: 12px;">{{ txn.customer_name|default:"Restaurant Sale" }}</td>
+            <td>
+              <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" 
+                      onclick="showReceiptModal('{{ txn.merchant_reference }}', '{{ txn.moniepoint_reference|default:"" }}', '₦{{ txn.amount|floatformat:2 }}', '{{ txn.get_payment_method_display }}', '{{ txn.status }}', '{{ txn.rrn|default:"" }}', '{{ txn.terminal.name|default:txn.terminal_serial }}', '{{ txn.created_at|date:"Y-m-d H:i:s" }}', '{{ txn.customer_name|default:"" }}')">
+                Receipt
+              </button>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 32px;">No transactions match your search filters.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination Controls -->
+  {% if page_obj.has_other_pages %}
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+      <span style="font-size: 13px; color: var(--text-muted);">
+        Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+      </span>
+      <div style="display: flex; gap: 8px;">
+        {% if page_obj.has_previous %}
+          <a href="?page={{ page_obj.previous_page_number }}&search={{ search }}&status={{ status }}" class="btn btn-secondary">&laquo; Previous</a>
+        {% endif %}
+        {% if page_obj.has_next %}
+          <a href="?page={{ page_obj.next_page_number }}&search={{ search }}&status={{ status }}" class="btn btn-secondary">Next &raquo;</a>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+<!-- Receipt Modal -->
+<div id="receipt-modal" class="modal-overlay">
+  <div class="modal-content" style="max-width: 420px; font-family: monospace; background: #0B0F19;">
+    <div class="modal-header" style="border-bottom: 2px dashed var(--border-color);">
+      <div style="text-align: center; width: 100%;">
+        <h3 style="font-size: 16px; color: #fff; margin-bottom: 4px;">YOHANNA DAMA MICHAEL</h3>
+        <p style="font-size: 11px; color: var(--primary-green);">MONIEPOINT POS RECEIPT</p>
+      </div>
+      <button class="close-btn" onclick="closeReceiptModal()">&times;</button>
+    </div>
+
+    <div style="padding: 16px 0; font-size: 13px; display: flex; flex-direction: column; gap: 10px;">
+      <div style="display: flex; justify-content: space-between;">
+        <span style="color: var(--text-muted);">Date/Time:</span>
+        <span id="rcpt-time" style="color: #fff;"></span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span style="color: var(--text-muted);">Merchant Ref:</span>
+        <span id="rcpt-mref" style="color: #fff; font-weight: 700;"></span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span style="color: var(--text-muted);">Moniepoint Ref:</span>
+        <span id="rcpt-mpref" style="color: #fff;"></span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span style="color: var(--text-muted);">Terminal:</span>
+        <span id="rcpt-terminal" style="color: #fff;"></span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span style="color: var(--text-muted);">Payment Method:</span>
+        <span id="rcpt-method" style="color: var(--cyan-accent); font-weight: 700;"></span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span style="color: var(--text-muted);">RRN:</span>
+        <span id="rcpt-rrn" style="color: #fff;"></span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span style="color: var(--text-muted);">Note / Table:</span>
+        <span id="rcpt-note" style="color: #fff;"></span>
+      </div>
+
+      <div style="margin-top: 14px; padding: 14px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; text-align: center;">
+        <div style="font-size: 11px; color: var(--text-muted);">AMOUNT PAID</div>
+        <div id="rcpt-amount" style="font-size: 26px; font-weight: 800; color: var(--primary-green);"></div>
+        <div id="rcpt-status" style="font-size: 12px; font-weight: 700; margin-top: 4px;">APPROVED - SUCCESSFUL</div>
+      </div>
+    </div>
+
+    <div style="margin-top: 16px; display: flex; gap: 10px;">
+      <button class="btn btn-secondary" style="flex: 1; justify-content: center;" onclick="window.print()">Print Receipt</button>
+      <button class="btn btn-primary" style="flex: 1; justify-content: center;" onclick="closeReceiptModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function showReceiptModal(mref, mpref, amount, method, status, rrn, terminal, time, note) {
+    document.getElementById('rcpt-mref').innerText = mref;
+    document.getElementById('rcpt-mpref').innerText = mpref || 'N/A';
+    document.getElementById('rcpt-amount').innerText = amount;
+    document.getElementById('rcpt-method').innerText = method;
+    document.getElementById('rcpt-terminal').innerText = terminal;
+    document.getElementById('rcpt-rrn').innerText = rrn || 'N/A';
+    document.getElementById('rcpt-time').innerText = time;
+    document.getElementById('rcpt-note').innerText = note || 'Restaurant Sale';
+    document.getElementById('rcpt-status').innerText = status === 'SUCCESS' ? 'APPROVED - SUCCESSFUL' : status;
+    document.getElementById('receipt-modal').classList.add('active');
+  }
+
+  function closeReceiptModal() {
+    document.getElementById('receipt-modal').classList.remove('active');
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,150 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block page_title %}Moniepoint API & Webhooks Settings (.env Bound){% endblock %}
+
+{% block content %}
+<div class="charts-grid">
+  <!-- Moniepoint API Configuration Form -->
+  <div class="glass-card">
+    <div class="chart-header">
+      <h3 class="chart-title">Moniepoint API Credentials (.env File)</h3>
+      <span class="badge badge-success">🔒 .env Secured</span>
+    </div>
+
+    <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
+      All sensitive Moniepoint credentials below are loaded dynamically from <code>c:\Users\HomePC\rest\.env</code>.
+    </p>
+
+    <form method="POST" action="{% url 'settings' %}">
+      {% csrf_token %}
+      <div class="form-group">
+        <label class="form-label">MONIEPOINT_API_KEY</label>
+        <input type="password" name="api_key" class="form-input" value="{{ config.api_key }}" placeholder="e.g. Bearer eyJhbGciOi..." required>
+        <span style="font-size: 11px; color: var(--text-muted);">Loaded from <code>MONIEPOINT_API_KEY</code> variable.</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">MONIEPOINT_BUSINESS_ID</label>
+        <input type="text" name="business_id" class="form-input" value="{{ config.business_id }}" placeholder="e.g. 1098234">
+        <span style="font-size: 11px; color: var(--text-muted);">Loaded from <code>MONIEPOINT_BUSINESS_ID</code>.</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">MONIEPOINT_WEBHOOK_SECRET</label>
+        <input type="password" name="webhook_secret" class="form-input" value="{{ config.webhook_secret }}" placeholder="whsec_...">
+        <span style="font-size: 11px; color: var(--text-muted);">Used for SHA256 HMAC signature validation (loaded from <code>MONIEPOINT_WEBHOOK_SECRET</code>).</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">MONIEPOINT_ENVIRONMENT</label>
+        <select name="environment" class="form-select">
+          <option value="SANDBOX" {% if config.environment == 'SANDBOX' %}selected{% endif %}>Sandbox / Testing</option>
+          <option value="PRODUCTION" {% if config.environment == 'PRODUCTION' %}selected{% endif %}>Production / Live</option>
+        </select>
+      </div>
+
+      <button type="submit" class="btn btn-primary" style="margin-top: 14px;">Update .env File</button>
+    </form>
+  </div>
+
+  <!-- Introspection & Webhook Callback Info -->
+  <div style="display: flex; flex-direction: column; gap: 24px;">
+    <!-- Introspection Card -->
+    <div class="glass-card">
+      <div class="chart-header">
+        <h3 class="chart-title">Token Introspection Status</h3>
+      </div>
+      
+      {% if intro_res.valid %}
+        <div style="padding: 16px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-sm);">
+          <div style="display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--primary-green);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+            API Key Verified & Authorized
+          </div>
+          <p style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">
+            {{ intro_res.message|default:"Successfully introspected token via Moniepoint GET /v1/introspect endpoint." }}
+          </p>
+        </div>
+      {% else %}
+        <div style="padding: 16px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: var(--radius-sm);">
+          <div style="font-weight: 700; color: var(--danger-red);">Introspection Failed</div>
+          <p style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">{{ intro_res.error }}</p>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- Webhook Endpoint URL Box -->
+    <div class="glass-card">
+      <div class="chart-header">
+        <h3 class="chart-title">Your Webhook Callback URL</h3>
+      </div>
+      <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+        Register this URL in your Moniepoint Business Dashboard under <strong>Webhook Subscriptions</strong> for <code>V1_POS_TRANSACTION</code> events:
+      </p>
+
+      <div style="display: flex; gap: 10px;">
+        <input type="text" readonly id="wh-url" class="form-input" value="{{ webhook_url }}" style="font-family: monospace; font-size: 12px; color: var(--cyan-accent);">
+        <button class="btn btn-secondary" onclick="copyWebhookUrl()">Copy</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Webhook Logs Table -->
+<div class="glass-card" style="margin-top: 28px;">
+  <div class="chart-header">
+    <h3 class="chart-title">Recent Incoming Webhook Events Log</h3>
+  </div>
+
+  <div class="table-responsive">
+    <table class="custom-table">
+      <thead>
+        <tr>
+          <th>Received Time</th>
+          <th>Event Type</th>
+          <th>Status</th>
+          <th>Signature Valid</th>
+          <th>Event ID</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in webhook_logs %}
+          <tr>
+            <td style="font-size: 12px; color: var(--text-muted);">{{ log.received_at|date:"Y-m-d H:i:s" }}</td>
+            <td style="font-weight: 600; color: var(--cyan-accent);">{{ log.event_type }}</td>
+            <td>
+              {% if log.status == 'SUCCESS' %}
+                <span class="badge badge-success">Success</span>
+              {% else %}
+                <span class="badge badge-failed">Failed</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if log.signature_valid %}
+                <span style="color: var(--primary-green); font-size: 12px;">✔ Valid HMAC</span>
+              {% else %}
+                <span style="color: var(--danger-red); font-size: 12px;">✖ Invalid</span>
+              {% endif %}
+            </td>
+            <td style="font-family: monospace; font-size: 11px; color: var(--text-muted);">{{ log.subscription_event_id }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 24px;">No webhooks received yet. Real-time webhooks will log here when payments occur.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  function copyWebhookUrl() {
+    const input = document.getElementById('wh-url');
+    input.select();
+    document.execCommand('copy');
+    showToast('Copied to Clipboard', 'Webhook URL copied successfully!');
+  }
+</script>
+{% endblock %}

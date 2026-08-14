@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block page_title %}Moniepoint POS Terminals Monitoring{% endblock %}
+
+{% block content %}
+<div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); margin-bottom: 32px;">
+  {% for stat in terminal_stats %}
+    <div class="glass-card">
+      <div class="metric-header">
+        <div>
+          <h3 style="font-family: var(--font-heading); font-size: 16px; font-weight: 700; color: #fff;">{{ stat.terminal.name }}</h3>
+          <span style="font-size: 11px; font-family: monospace; color: var(--cyan-accent);">SN: {{ stat.terminal.serial_number }}</span>
+        </div>
+        <div>
+          {% if stat.terminal.status == 'ONLINE' %}
+            <span class="badge badge-success">Active Ingestion</span>
+          {% else %}
+            <span class="badge badge-failed">Offline</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div style="margin: 16px 0; padding: 14px; background: rgba(255, 255, 255, 0.03); border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+        <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Location Tag</div>
+        <div style="font-size: 14px; font-weight: 600; color: #fff;">{{ stat.terminal.location_tag }}</div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px;">
+        <div>
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Today's Ingested Sales</div>
+          <div style="font-family: var(--font-heading); font-size: 22px; font-weight: 800; color: var(--primary-green);">
+            ₦{{ stat.today_sales|floatformat:2 }}
+          </div>
+        </div>
+        <div style="text-align: right; font-size: 12px; color: var(--text-muted);">
+          <div><strong style="color: #fff;">{{ stat.success_count }}</strong> Payments</div>
+          {% if stat.failed_count > 0 %}
+            <div style="color: var(--danger-red);">{{ stat.failed_count }} Failed</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div style="border-top: 1px solid var(--border-color); padding-top: 14px;">
+        <a href="{% url 'transactions' %}?terminal={{ stat.terminal.id }}" class="btn btn-secondary" style="width: 100%; justify-content: center; font-size: 12px;">
+          View Terminal Payment History &raquo;
+        </a>
+      </div>
+    </div>
+  {% empty %}
+    <div class="glass-card" style="grid-column: 1 / -1; text-align: center; padding: 48px;">
+      <h3>No POS Terminals Discovered</h3>
+      <p style="color: var(--text-muted); margin-top: 8px;">Terminals will auto-appear here as webhooks arrive from Moniepoint.</p>
+    </div>
+  {% endfor %}
+</div>
+
+<!-- Webhook Consuming Guide Card -->
+<div class="glass-card">
+  <div class="chart-header">
+    <h3 class="chart-title">Real-Time Ingestion Architecture</h3>
+  </div>
+  <p style="font-size: 14px; color: var(--text-muted); line-height: 1.6; margin-bottom: 16px;">
+    This dashboard operates purely in <strong>Consuming Mode</strong>. Whenever a payment is completed on any Moniepoint POS hardware across your restaurant (card tap, card insert, or bank transfer), Moniepoint fires an instant webhook notification to your callback endpoint:
+  </p>
+
+  <div style="background: #0B0F19; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 16px; font-family: monospace; font-size: 13px; color: var(--primary-green); overflow-x: auto;">
+    POST /api/webhooks/moniepoint/<br>
+    Headers: X-Moniepoint-Signature: {HMAC_SHA256_HASH}<br>
+    Payload: {<br>
+    &nbsp;&nbsp;"eventType": "V1_POS_TRANSACTION",<br>
+    &nbsp;&nbsp;"data": {<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;"merchantReference": "REST-20260813-0941",<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;"terminalSerial": "MP-BAR-01",<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;"amount": 1250000,&nbsp;&nbsp;// Kobo (₦12,500.00)<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;"status": "SUCCESS",<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;"paymentMethod": "CARD_PURCHASE"<br>
+    &nbsp;&nbsp;}<br>
+    }
+  </div>
+</div>
+{% endblock %}
